@@ -6,6 +6,8 @@
 #include <Preferences.h>
 #include <WebServer.h>
 
+#define MAX_NETWORKS 20
+
 namespace WiFiProvisioner {
 
 typedef bool (*InputCheckCallback)(const String &);
@@ -54,6 +56,7 @@ public:
   void setConnectionTimeout(unsigned long timeout);
   void setShowInputField(bool value);
   void setRestartOnSuccess(bool value);
+  long setminimumSignalStrength(long value);
   void enableSerialDebug(bool enable);
 
 private:
@@ -92,6 +95,8 @@ private:
   unsigned int wifiDelay = 100;
   unsigned int newWifiConnectionTimeout = 10000;
   const byte DNS_PORT = 53;
+  long minimumSignalStrength = -85;
+  int indices[MAX_NETWORKS];
 };
 
 } // namespace WiFiProvisioner

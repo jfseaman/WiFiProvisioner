@@ -28,6 +28,13 @@ void WiFiProvisioner::releaseResources() {
     m_dns_server = nullptr;
   }
 }
+long WiFiProvisioner::setminimumSignalStrength(long value) {
+  if(value < 0 && value > -100) {
+    minimumSignalStrength = value;
+    return 0;
+  }
+  return (value >= 0) ? 1 : -1;
+}
 void WiFiProvisioner::enableSerialDebug(bool enable) { serialDebug = enable; }
 void WiFiProvisioner::debugPrintln(const char *message) {
   if (serialDebug) {
@@ -65,7 +72,7 @@ bool WiFiProvisioner::connectToExistingWiFINetwork() {
     WiFi.mode(WIFI_STA); // Set Wi-Fi mode to STA
     delay(wifiDelay);
     debugPrintln(
-        "Found existing wifi credientials, trying to connect with timeout" +
+        "Found existing wifi credientials, trying to connect with timeout: " +
         String(connectionTimeout));
 
     // Try to Connect to the WiFi with stored credentials
@@ -189,14 +196,47 @@ String WiFiProvisioner::getAvailableNetworks() {
   inputObj["show_code"] = (showInputField) ? "true" : "false";
   debugPrintln("Starting Network Scan...");
   int n = WiFi.scanNetworks(false, false);
+
   if (n) {
-    for (int i = 0; i < n; ++i) {
-      JsonObject networkObj = networks.createNestedObject();
-      networkObj["rssi"] = convertRRSItoLevel(WiFi.RSSI(i));
-      networkObj["ssid"] = WiFi.SSID(i);
-      networkObj["authmode"] =
-          (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? 0 : 1;
-    }
+    if (n > MAX_NETWORKS) n = MAX_NETWORKS;
+    // Allocate space off the heap for indices array.
+    // This space should be freed when no longer required.
+    // int *indices = (int *)malloc(n * sizeof(int));
+    // if(indices != NULL) {
+      //setup for de-dup networks
+      for (int i = 0; i < n; i++) {
+        indices[i] = i;
+      }
+      String cssid;
+
+      for (int i = 0; i < n; i++) {
+        if (indices[i] == -1)
+          continue;
+        if (WiFi.RSSI(indices[i]) < minimumSignalStrength) {
+          indices[i] = -1;
+          continue;
+        }
+
+        cssid = WiFi.SSID(indices[i]);
+
+        for (int j = i + 1; j < n; j++) {
+          if (cssid == WiFi.SSID(indices[j])) {
+            indices[j] = -1;  // set dup aps to index -1
+          }
+        }
+      }
+      // Now add the networks to the Json object if not a dupe or bellow signal strength
+      for (int i = 0; i < n; ++i) {
+        if (indices[i] != -1) {
+          JsonObject networkObj = networks.createNestedObject();
+          networkObj["rssi"] = convertRRSItoLevel(WiFi.RSSI(indices[i]));
+          networkObj["ssid"] = WiFi.SSID(indices[i]);
+          networkObj["authmode"] =
+              (WiFi.encryptionType(indices[i]) == WIFI_AUTH_OPEN) ? 0 : 1;
+        }
+     }
+    //  free(indices);
+    // }
   }
 
   String jsonString;
